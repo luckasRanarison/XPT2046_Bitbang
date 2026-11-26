@@ -28,15 +28,15 @@
 
 class TS_Point {
 public:
-  TS_Point(void) : x(0), y(0), z(0) {}
-  TS_Point(int16_t x, int16_t y, int16_t z) : x(x), y(y), z(z) {}
+  TS_Point(void) : x(0), y(0), z(0), xRaw(0), yRaw(0) {}
+  TS_Point(int16_t x, int16_t y, int16_t z, int16_t xRaw, int16_t yRaw) : x(x), y(y), z(z), xRaw(xRaw), yRaw(yRaw) {}
   bool operator==(TS_Point p) {
-    return ((p.x == x) && (p.y == y) && (p.z == z));
+    return ((p.x == x) && (p.y == y) && (p.z == z) && (p.xRaw == xRaw) && (p.yRaw == yRaw));
   }
   bool operator!=(TS_Point p) {
-    return ((p.x != x) || (p.y != y) || (p.z != z));
+    return ((p.x != x) || (p.y != y) || (p.z != z) || (p.xRaw != xRaw) || (p.yRaw != yRaw));
   }
-  int16_t x, y, z;
+  int16_t x, y, z, xRaw, yRaw;
 };
 
 class XPT2046_Bitbang {
@@ -77,7 +77,7 @@ private:
   void update();
 
   uint8_t clkPin, misoPin, mosiPin, csPin, tirqPin, rotation = 1;
-  int16_t x = 0, y = 0, z = 0;
+  int16_t x = 0, y = 0, z = 0, xRaw = 0, yRaw = 0;
   int16_t screenWidth = 4095, screenHeight = 4095;
   uint16_t xMin = 0, xMax = 4095, yMin = 0, yMax = 4095;
   uint32_t lastMs = 0x80000000;

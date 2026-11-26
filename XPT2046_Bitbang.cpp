@@ -60,7 +60,7 @@ void isrPin(void) {
 
 TS_Point XPT2046_Bitbang::getPoint() {
   update();
-  return TS_Point(x, y, z);
+  return TS_Point(x, y, z, xRaw, yRaw);
 }
 
 bool XPT2046_Bitbang::tirqTouched() { return (isrWake); }
@@ -74,30 +74,30 @@ bool XPT2046_Bitbang::bufferEmpty() {
   return ((millis() - lastMs) < MSEC_THRESHOLD);
 }
 
-static int16_t besttwoavg(int16_t x, int16_t y, int16_t z) {
+static int16_t besttwoavg(int16_t _x, int16_t _y, int16_t _z) {
   int16_t da, db, dc;
   int16_t reta = 0;
 
-  if (x > y)
-    da = x - y;
+  if (_x > _y)
+    da = _x - _y;
   else
-    da = y - x;
-  if (x > z)
-    db = x - z;
+    da = _y - _x;
+  if (_x > _z)
+    db = _x - _z;
   else
-    db = z - x;
-  if (z > y)
-    dc = z - y;
+    db = _z - _x;
+  if (_z > _y)
+    dc = _z - _y;
   else
-    dc = y - z;
+    dc = _y - _z;
 
   if (da <= db && da <= dc)
-    reta = (x + y) >> 1;
+    reta = (_x + _y) >> 1;
   else if (db <= da && db <= dc)
-    reta = (x + z) >> 1;
+    reta = (_x + _z) >> 1;
   else
-    reta = (y + z) >>
-           1; //    else if ( dc <= da && dc <= db ) reta = (x + y) >> 1;
+    reta = (_y + _z) >>
+           1; //    else if ( dc <= da && dc <= db ) reta = (_x + _y) >> 1;
 
   return (reta);
 }
@@ -132,7 +132,7 @@ uint16_t XPT2046_Bitbang::readSPI(byte command) {
 
 void XPT2046_Bitbang::update() {
   int16_t data[6];
-  int zRaw;
+  int _zRaw;
 
   if (!isrWake)
     return;
@@ -147,9 +147,9 @@ void XPT2046_Bitbang::update() {
   int16_t z1 = readSPI(CMD_READ_Z1);
   int16_t z2 = readSPI(CMD_READ_Z2);
 
-  zRaw = (z1 + 4095) - z2;
+  _zRaw = (z1 + 4095) - z2;
 
-  if (zRaw >= Z_THRESHOLD) {
+  if (_zRaw >= Z_THRESHOLD) {
     data[0] = readSPI(CMD_READ_X);
     data[1] = readSPI(CMD_READ_Y); // make 3 x-y measurements
     data[2] = readSPI(CMD_READ_X);
@@ -162,16 +162,16 @@ void XPT2046_Bitbang::update() {
   digitalWrite(csPin, HIGH);
 
   // Serial.printf("z=%d  ::  z1=%d,  z2=%d  ", z, z1, z2);
-  if (zRaw < 0)
-    zRaw = 0;
+  if (_zRaw < 0)
+    _zRaw = 0;
 
-  if (zRaw < Z_THRESHOLD) { //	if ( !touched ) {
+  if (_zRaw < Z_THRESHOLD) { //	if ( !touched ) {
     // Serial.println();
     z = 0;
     x = -1;
     y = -1;
 
-    if (zRaw < Z_THRESHOLD_INT) { //	if ( !touched ) {
+    if (_zRaw < Z_THRESHOLD_INT) { //	if ( !touched ) {
       if (tirqPin != 255)
         isrWake = false;
     }
@@ -179,57 +179,44 @@ void XPT2046_Bitbang::update() {
     return;
   }
 
-  z = zRaw;
+  z = _zRaw;
 
   // Average pair with least distance between each measured x then y
   // Serial.printf("    z1=%d,z2=%d  ", z1, z2);
-  // Serial.printf("p=%d,  %d,%d  %d,%d  %d,%d", zraw,
+  // Serial.printf("p=%d,  %d,%d  %d,%d  %d,%d", _zRaw,
   // data[0], data[1], data[2], data[3], data[4], data[5]);
-  int16_t xRaw = besttwoavg(data[0], data[2], data[4]);
-  int16_t yRaw = besttwoavg(data[1], data[3], data[5]);
-  int16_t xBound = (rotation & 1) ? screenWidth : screenHeight;
-  int16_t yBound = (rotation & 1) ? screenHeight : screenWidth;
+  int16_t _xRaw = besttwoavg(data[0], data[2], data[4]);
+  int16_t _yRaw = besttwoavg(data[1], data[3], data[5]);
 
   // Serial.printf("    %d,%d", x, y);
   // Serial.println();
-  if (zRaw < Z_THRESHOLD)
+  if (_zRaw < Z_THRESHOLD)
     return;
 
-  int16_t newX, newY;
-  uint32_t delta = now - lastMs;
+  int16_t _newX, _newY;
+  uint32_t delta = now - lastMs; // delta, dx, dy *** Are No Longer Used ***
 
-  switch (rotation) {
-  case 0:
-    newX = 4095 - yRaw;
-    newY = xRaw;
+  switch (rotation) { // Accurate single calibration valid for all views
+  case 0:  //PORTRAIT
+    _newX = constrain(map(_yRaw, yMax, yMin, 0, screenWidth), 0, screenWidth - 1);   // x is y reversed
+    _newY = constrain(map(_xRaw, xMin, xMax, 0, screenHeight), 0, screenHeight - 1); // y is x
     break;
-  case 1:
-    newX = xRaw;
-    newY = yRaw;
+  case 1:  //LANDSCAPE
+    _newX = constrain(map(_xRaw, xMin, xMax, 0, screenHeight), 0, screenHeight - 1); // x is x
+    _newY = constrain(map(_yRaw, yMin, yMax, 0, screenWidth), 0, screenWidth - 1);   // y is y
     break;
-  case 2:
-    newX = yRaw;
-    newY = 4095 - xRaw;
+  case 2:  //PORTRAIT REV
+    _newX = constrain(map(_yRaw, yMin, yMax, 0, screenWidth), 0, screenWidth - 1);   // x is y
+    _newY = constrain(map(_xRaw, xMax, xMin, 0, screenHeight), 0, screenHeight - 1); // y is x reversed
     break;
-  default: // 3
-    newX = 4095 - xRaw;
-    newY = 4095 - yRaw;
-  }
-
-  newX = map(newX, xMin, xMax, 0, xBound);
-  newY = map(newY, yMin, yMax, 0, yBound);
-
-  int16_t dx = abs(newX - x);
-  int16_t dy = abs(newY - y);
-  uint16_t distance = dx + dy;
-
-  // Fixes jitter when drawing lines
-  if (x != -1 && distance > (MAX_MS_TRAVEL * delta)) {
-    z = 0;
-    return;
-  }
-
-  x = newX;
-  y = newY;
-  lastMs = now; // good read completed, set wait
+  default: // 3 LANDSCAPE REV
+    _newX = constrain(map(_xRaw, xMax, xMin, 0, screenHeight), 0, screenHeight - 1); // x is x reversed
+    _newY = constrain(map(_yRaw, yMax, yMin, 0, screenWidth), 0, screenWidth - 1);   // y is y reversed
+    }
+  
+  x = _newX; // replace old with the new
+  y = _newY;
+  xRaw = _xRaw;
+  yRaw = _yRaw;
+  lastMs = now; // good read completed, set wait *** needs reimplimented ***
 }
